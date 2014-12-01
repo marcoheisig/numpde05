@@ -22,19 +22,12 @@ typedef struct {
   /* linked list of neighboring vertices of each vertex */
   node **v_neighbors;
 
-  /* conversion between matrix row and mesh id */
-  size_t *id2row;
-  size_t *row2id;
-
   /* Vertex type id  (0: interior, 1: boundary y=0, 2: boundary x=1,
    * 3: boundary y=1, 4: boundary x=0) */
   unsigned char * id_v;
 
   /* Number of vertices */
   size_t n_vertices;
-
-  /* rank = number of non-boundary vertices */
-  size_t rank;
 
   /* Number of triangles */
   size_t n_triangles;

@@ -28,7 +28,6 @@ void get_mesh(mesh * m, size_t n)
   }
 
   /* initialize vertices */
-  m->rank        = 0;
   for(size_t iy = 0; iy <= n; ++iy) {
     for(size_t ix = 0; ix <= n; ++ix) {
       double x, y;
@@ -45,7 +44,6 @@ void get_mesh(mesh * m, size_t n)
       else if(n == iy) m->id_v[vertex_id] = (unsigned char) NORTH;
       else if(0 == ix) m->id_v[vertex_id] = (unsigned char) WEST;
       else if(n == ix) m->id_v[vertex_id] = (unsigned char) EAST;
-      else ++(m->rank);
     }
   }
 
@@ -86,103 +84,103 @@ void get_mesh(mesh * m, size_t n)
     /* Jep - each edge is added many times, but I don't care */
   }
 
-  /* make an indexing scheme for interior nodes */
-  m->id2row = safe_malloc(m->n_vertices * sizeof(size_t));
-  m->row2id = safe_malloc(m->rank       * sizeof(size_t));
-  size_t row = 0;
+#ifdef PRINT_DEBUG
   for(size_t vid = 0; vid < m->n_vertices; ++vid) {
-    if(m->id_v[vid] != INSIDE) continue;
-    m->id2row[vid] = row;
-    m->row2id[row] = vid;
-    ++row;
+    printf("neighbors of %lu:", vid);
+    print_list(m->v_neighbors[vid]);
+    printf("\n");
   }
+#endif
 
-  if(0) {
-    for(size_t vid = 0; vid < m->n_vertices; ++vid) {
-      printf("neighbors of %lu:", vid);
-      print_list(m->v_neighbors[vid]);
-      printf("\n");
-    }
-  }
-
+#ifdef PRINT_DEBUG
   /* output the mesh in gnuplot visualizable format */
-  if(1) {
-    FILE *gnuplotfile = fopen("mesh.gnuplot", "w");
-    if(!gnuplotfile) {
-      fprintf(stderr, "could not open file for gnuplot visualization\n");
-      return;
-    }
-    for(size_t tid = 0; tid < m->n_triangles; ++tid) {
-      size_t v1 = m->t2v[3 * tid + 0];
-      size_t v2 = m->t2v[3 * tid + 1];
-      size_t v3 = m->t2v[3 * tid + 2];
-      fprintf(gnuplotfile, "%g %g 0\n%g %g 0\n\n%g %g 0\n%g %g 0\n\n%g %g 0\n%g %g 0\n\n\n",
-              m->coords[2 * v1 + 0], m->coords[2 * v1 + 1],
-              m->coords[2 * v2 + 0], m->coords[2 * v2 + 1],
-              m->coords[2 * v2 + 0], m->coords[2 * v2 + 1],
-              m->coords[2 * v3 + 0], m->coords[2 * v3 + 1],
-              m->coords[2 * v3 + 0], m->coords[2 * v3 + 1],
-              m->coords[2 * v1 + 0], m->coords[2 * v1 + 1]);
-    }
-    fclose(gnuplotfile);
+  FILE *gnuplotfile = fopen("mesh.gnuplot", "w");
+  if(!gnuplotfile) {
+    fprintf(stderr, "could not open file for gnuplot visualization\n");
+    return;
   }
+  for(size_t tid = 0; tid < m->n_triangles; ++tid) {
+    size_t v1 = m->t2v[3 * tid + 0];
+    size_t v2 = m->t2v[3 * tid + 1];
+    size_t v3 = m->t2v[3 * tid + 2];
+    fprintf(gnuplotfile, "%g %g 0\n%g %g 0\n\n%g %g 0\n%g %g 0\n\n%g %g 0\n%g %g 0\n\n\n",
+            m->coords[2 * v1 + 0], m->coords[2 * v1 + 1],
+            m->coords[2 * v2 + 0], m->coords[2 * v2 + 1],
+            m->coords[2 * v2 + 0], m->coords[2 * v2 + 1],
+            m->coords[2 * v3 + 0], m->coords[2 * v3 + 1],
+            m->coords[2 * v3 + 0], m->coords[2 * v3 + 1],
+            m->coords[2 * v1 + 0], m->coords[2 * v1 + 1]);
+  }
+  fclose(gnuplotfile);
+#endif
 }
 
 void init_matrix(crs_matrix * mat, mesh const * m)
 {
-  mat->n_rows = m->rank;
-  mat->n_cols = m->rank;
+  mat->n_rows = m->n_vertices;
+  mat->n_cols = m->n_vertices;
 
-  size_t n_nonzero = 0;
-  for(size_t row = 0; row < m->rank; ++row) {
-    node *neighbors = m->v_neighbors[m->row2id[row]];
+  size_t n_values = 0;
+  for(size_t row = 0; row < m->n_vertices; ++row) {
+    node *neighbors = m->v_neighbors[row];
     node *current = neighbors->next; // skip head element - leaky abstraction
     while(current) {
-      if(m->id_v[current->value] == INSIDE) {
-        n_nonzero += 1;
-      }
+      ++n_values;
       current = current->next;
     }
   }
-  mat->val    = safe_malloc(n_nonzero * sizeof(double));
-  mat->colInd = safe_malloc(n_nonzero * sizeof(size_t));
+
+  mat->val    = safe_malloc(n_values * sizeof(double));
+  mat->colInd = safe_malloc(n_values * sizeof(size_t));
   mat->rowPtr = safe_malloc((1 + mat->n_rows) * sizeof(size_t));
 
   size_t index = 0;
-  for(size_t row = 0; row < m->rank; ++row) {
+  for(size_t row = 0; row < m->n_vertices; ++row) {
     mat->rowPtr[row] = index;
-    node *neighbors = m->v_neighbors[m->row2id[row]];
-    node *current = neighbors->next; // skip head element - leaky abstraction
+    node *neighbors = m->v_neighbors[row];
+    node *current = neighbors->next;
     while(current) {
-      if(m->id_v[current->value] == INSIDE) {
-        mat->colInd[index] = m->id2row[current->value];
-        ++index;
-      }
+      mat->colInd[index] = current->value;
+      ++index;
       current = current->next;
     }
   }
-  mat->rowPtr[m->rank] = index;
+  mat->rowPtr[m->n_vertices] = index;
+#ifdef PRINT_DEBUG
+  printf("sparse matrix structure:\n");
+  print_matrix(mat);
+#endif
 }
 
 void get_local_stiffness(double local_stiffness[3][3], mesh const * m,
                          size_t element_id)
 {
   double x1, x2, x3, y1, y2, y3;
-  size_t v_id1 = 3 * element_id + 0;
-  size_t v_id2 = 3 * element_id + 1;
-  size_t v_id3 = 3 * element_id + 2;
-  x1 = m->coords[v_id1 + 0];
-  y1 = m->coords[v_id1 + 1];
-  x2 = m->coords[v_id2 + 0];
-  y2 = m->coords[v_id2 + 1];
-  x3 = m->coords[v_id3 + 0];
-  y3 = m->coords[v_id3 + 1];
+  size_t v_id1 = m->t2v[3 * element_id + 0];
+  size_t v_id2 = m->t2v[3 * element_id + 1];
+  size_t v_id3 = m->t2v[3 * element_id + 2];
+  x1 = m->coords[2 * v_id1 + 0];
+  y1 = m->coords[2 * v_id1 + 1];
+  x2 = m->coords[2 * v_id2 + 0];
+  y2 = m->coords[2 * v_id2 + 1];
+  x3 = m->coords[2 * v_id3 + 0];
+  y3 = m->coords[2 * v_id3 + 1];
 
   double B11 = x2 - x1;
   double B12 = x3 - x1;
   double B21 = y2 - y1;
   double B22 = y3 - y1;
-  double detB = abs(B11 * B22 - B21 * B12);
+  double detB = fabs(B11 * B22 - B21 * B12);
+
+#ifdef PRINT_DEBUG
+  printf("generating local stiffness matrix for triangle %zu\n", element_id);
+  printf("vertices: %zu %zu %zu\n", v_id1, v_id2, v_id3);
+  printf("B :=\n| %g-%g %g-%g |\n| %g-%g %g-%g |\n",
+         x2, x1, x3, x1, y2, y1, y3, y1);
+  printf("B :=\n| %g %g |\n| %g %g |\n",
+         B11, B12, B21, B22);
+  printf("detB: %g\n\n", detB);
+#endif
 
   double gamma1 = 1.0 / detB * ((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1));
   double gamma2 = 1.0 / detB * ((x2-x1)*(x3-x1) + (y2-y1)*(y3-y1));
@@ -213,25 +211,34 @@ void get_local_stiffness(double local_stiffness[3][3], mesh const * m,
 void get_local_load(double local_load[3], mesh const * m, size_t element_id,
                     double (*fn_f)(double, double))
 {
-  err_exit("Not yet implemented!");
-  /* Dummy operation to eliminate compiler errors */
-  local_load[0] = element_id + fn_f(m->coords[0], m->coords[1]);
+  if(m == NULL) return;
+  if(element_id == 0) if(fn_f == NULL) return;
+
+  local_load[0] = 0.0;
+  local_load[1] = 0.0;
+  local_load[2] = 0.0;
 }
 
 void assemble_local2global_stiffness(double local_stiffness[3][3],
                                      crs_matrix * mat, mesh const * m,
                                      size_t element_id)
 {
-  err_exit("Not yet implemented!");
-  /* Dummy operation to eliminate compiler errors */
-  local_stiffness[0][0] = mat->val[0] + m->coords[0] + element_id;
+  for(size_t i = 0; i < 3; ++i) {
+    size_t row = m->t2v[3*element_id + i];
+    for(size_t j = 0; j < 3; ++j) {
+      size_t col = m->t2v[3*element_id + j];
+      for(size_t crs_i = mat->rowPtr[row]; crs_i < mat->rowPtr[row+1]; ++crs_i) {
+        if(mat->colInd[crs_i] != col) continue;
+        mat->val[crs_i] += local_stiffness[i][j];
+        break;
+      }
+    }
+  }
 }
 
 void assemble_local2global_load(double local_load[3], double * rhs,
                                 mesh const * m, size_t element_id)
 {
-  err_exit("Not yet implemented!");
-  /* Dummy operation to eliminate compiler errors */
   local_load[0] = rhs[0] + m->coords[0] + element_id;
 }
 
