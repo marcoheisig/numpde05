@@ -72,10 +72,15 @@ void get_mesh(mesh * m, size_t n)
   /* store connectivity information */
   for(size_t tid = 0; tid < m->n_triangles; ++tid) {
     add_ordered(m->v_neighbors[m->t2v[3 * tid + 0]], m->t2v[3 * tid + 0]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 1]], m->t2v[3 * tid + 1]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 2]], m->t2v[3 * tid + 2]);
+
     add_ordered(m->v_neighbors[m->t2v[3 * tid + 0]], m->t2v[3 * tid + 1]);
     add_ordered(m->v_neighbors[m->t2v[3 * tid + 1]], m->t2v[3 * tid + 0]);
+
     add_ordered(m->v_neighbors[m->t2v[3 * tid + 1]], m->t2v[3 * tid + 2]);
     add_ordered(m->v_neighbors[m->t2v[3 * tid + 2]], m->t2v[3 * tid + 1]);
+
     add_ordered(m->v_neighbors[m->t2v[3 * tid + 2]], m->t2v[3 * tid + 0]);
     add_ordered(m->v_neighbors[m->t2v[3 * tid + 0]], m->t2v[3 * tid + 2]);
     /* Jep - each edge is added many times, but I don't care */
@@ -92,7 +97,7 @@ void get_mesh(mesh * m, size_t n)
     ++row;
   }
 
-  if(1) {
+  if(0) {
     for(size_t vid = 0; vid < m->n_vertices; ++vid) {
       printf("neighbors of %lu:", vid);
       print_list(m->v_neighbors[vid]);
@@ -130,20 +135,33 @@ void init_matrix(crs_matrix * mat, mesh const * m)
 
   size_t n_nonzero = 0;
   for(size_t row = 0; row < m->rank; ++row) {
-    size_t n_connections = list_length(m->v_neighbors[m->row2id[row]]);
-    n_nonzero += n_connections + 1;
+    node *neighbors = m->v_neighbors[m->row2id[row]];
+    node *current = neighbors->next; // skip head element - leaky abstraction
+    while(current) {
+      if(m->id_v[current->value] == INSIDE) {
+        n_nonzero += 1;
+      }
+      current = current->next;
+    }
   }
   mat->val    = safe_malloc(n_nonzero * sizeof(double));
   mat->colInd = safe_malloc(n_nonzero * sizeof(size_t));
-  mat->rowPtr = safe_malloc(mat->n_rows * sizeof(size_t));
+  mat->rowPtr = safe_malloc((1 + mat->n_rows) * sizeof(size_t));
 
-  //size_t index = 0;
+  size_t index = 0;
   for(size_t row = 0; row < m->rank; ++row) {
-    size_t n_connections = list_length(m->v_neighbors[m->row2id[row]]);
-    for(size_t i = 0; i < n_connections; ++i) {
-      
+    mat->rowPtr[row] = index;
+    node *neighbors = m->v_neighbors[m->row2id[row]];
+    node *current = neighbors->next; // skip head element - leaky abstraction
+    while(current) {
+      if(m->id_v[current->value] == INSIDE) {
+        mat->colInd[index] = m->id2row[current->value];
+        ++index;
+      }
+      current = current->next;
     }
   }
+  mat->rowPtr[m->rank] = index;
 }
 
 void get_local_stiffness(double local_stiffness[3][3], mesh const * m,
