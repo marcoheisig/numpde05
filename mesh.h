@@ -7,15 +7,9 @@ extern "C" {
 #endif
 
 #include <stdlib.h>
+#include "list.h"
 
-struct vertex_list {
-  size_t vertex;
-  struct vertex_list *next;
-};
-
-typedef struct vertex_list vertex_list;
-
-/*
+  /*
  * A struct holding all relevant data structures to describe the triangulation.
  */
 typedef struct {
@@ -26,7 +20,11 @@ typedef struct {
   size_t * t2v;
 
   /* linked list of neighboring vertices of each vertex */
-  vertex_list **v_neighbors;
+  node **v_neighbors;
+
+  /* conversion between matrix row and mesh id */
+  size_t *id2row;
+  size_t *row2id;
 
   /* Vertex type id  (0: interior, 1: boundary y=0, 2: boundary x=1,
    * 3: boundary y=1, 4: boundary x=0) */
@@ -34,6 +32,9 @@ typedef struct {
 
   /* Number of vertices */
   size_t n_vertices;
+
+  /* rank = number of non-boundary vertices */
+  size_t rank;
 
   /* Number of triangles */
   size_t n_triangles;

@@ -7,43 +7,12 @@
 #define err_exit(msg)                                                   \
   { fprintf(stderr, "ERROR: %s (%s:%d)\n", msg, __FILE__, __LINE__); exit(1); }
 
-void* safe_malloc(size_t size)
-{
-  void *mem = malloc(size);
-  if(NULL == mem) {
-  fprintf(stderr, "malloc failed - exiting.\n");
-  exit(EXIT_FAILURE);
-  }
-  memset(mem, 0, size);
-  return mem;
-}
-
-/* add the vertex if it is not already there */
-void add_neighbor(vertex_list **l, size_t v) {
-  if(NULL == *l) {
-    (*l) = safe_malloc(sizeof(vertex_list));
-    (*l)->vertex = v;
-    (*l)->next = NULL;
-  }
-  if((*l)->vertex != v) add_neighbor(&((*l)->next), v);
-}
-
-void print_list(vertex_list *l) {
-  if(NULL == l) return;
-  fprintf(stdout, " %lu", l->vertex);
-  print_list(l->next);
-}
-
-void list_length(vertex_list *l) {
-  if(NULL == l) return 0;
-  return 1 + list_length(l->next);
-}
-
-enum boundary_t {
-  SOUTH = 1,
-  EAST  = 2,
-  NORTH = 3,
-  WEST  = 4
+enum node_t {
+  INSIDE = 0,
+  SOUTH  = 1,
+  EAST   = 2,
+  NORTH  = 3,
+  WEST   = 4
 };
 
 void get_mesh(mesh * m, size_t n)
@@ -53,9 +22,13 @@ void get_mesh(mesh * m, size_t n)
   m->coords      = safe_malloc(2 * m->n_vertices  * sizeof(double));
   m->t2v         = safe_malloc(3 * m->n_triangles * sizeof(size_t));
   m->id_v        = safe_malloc(m->n_vertices * sizeof(unsigned char));
-  m->v_neighbors = safe_malloc(m->n_vertices * sizeof(vertex_list *));
+  m->v_neighbors = safe_malloc(m->n_vertices * sizeof(node *));
+  for(size_t vid = 0; vid < m->n_vertices; ++vid) {
+    m->v_neighbors[vid] = make_list();
+  }
 
   /* initialize vertices */
+  m->rank        = 0;
   for(size_t iy = 0; iy <= n; ++iy) {
     for(size_t ix = 0; ix <= n; ++ix) {
       double x, y;
@@ -68,10 +41,11 @@ void get_mesh(mesh * m, size_t n)
       m->coords[2 * vertex_id + 0] = x;
       m->coords[2 * vertex_id + 1] = y;
 
-      if(0 == iy) m->id_v[vertex_id] = (unsigned char) SOUTH;
-      if(n == iy) m->id_v[vertex_id] = (unsigned char) NORTH;
-      if(0 == ix) m->id_v[vertex_id] = (unsigned char) WEST;
-      if(n == ix) m->id_v[vertex_id] = (unsigned char) EAST;
+      if     (0 == iy) m->id_v[vertex_id] = (unsigned char) SOUTH;
+      else if(n == iy) m->id_v[vertex_id] = (unsigned char) NORTH;
+      else if(0 == ix) m->id_v[vertex_id] = (unsigned char) WEST;
+      else if(n == ix) m->id_v[vertex_id] = (unsigned char) EAST;
+      else ++(m->rank);
     }
   }
 
@@ -97,15 +71,28 @@ void get_mesh(mesh * m, size_t n)
 
   /* store connectivity information */
   for(size_t tid = 0; tid < m->n_triangles; ++tid) {
-    add_neighbor(&m->v_neighbors[m->t2v[3 * tid + 0]], m->t2v[3 * tid + 1]);
-    add_neighbor(&m->v_neighbors[m->t2v[3 * tid + 1]], m->t2v[3 * tid + 0]);
-    add_neighbor(&m->v_neighbors[m->t2v[3 * tid + 1]], m->t2v[3 * tid + 2]);
-    add_neighbor(&m->v_neighbors[m->t2v[3 * tid + 2]], m->t2v[3 * tid + 1]);
-    add_neighbor(&m->v_neighbors[m->t2v[3 * tid + 2]], m->t2v[3 * tid + 0]);
-    add_neighbor(&m->v_neighbors[m->t2v[3 * tid + 0]], m->t2v[3 * tid + 2]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 0]], m->t2v[3 * tid + 0]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 0]], m->t2v[3 * tid + 1]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 1]], m->t2v[3 * tid + 0]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 1]], m->t2v[3 * tid + 2]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 2]], m->t2v[3 * tid + 1]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 2]], m->t2v[3 * tid + 0]);
+    add_ordered(m->v_neighbors[m->t2v[3 * tid + 0]], m->t2v[3 * tid + 2]);
+    /* Jep - each edge is added many times, but I don't care */
   }
 
-  if(0) {
+  /* make an indexing scheme for interior nodes */
+  m->id2row = safe_malloc(m->n_vertices * sizeof(size_t));
+  m->row2id = safe_malloc(m->rank       * sizeof(size_t));
+  size_t row = 0;
+  for(size_t vid = 0; vid < m->n_vertices; ++vid) {
+    if(m->id_v[vid] != INSIDE) continue;
+    m->id2row[vid] = row;
+    m->row2id[row] = vid;
+    ++row;
+  }
+
+  if(1) {
     for(size_t vid = 0; vid < m->n_vertices; ++vid) {
       printf("neighbors of %lu:", vid);
       print_list(m->v_neighbors[vid]);
@@ -138,7 +125,25 @@ void get_mesh(mesh * m, size_t n)
 
 void init_matrix(crs_matrix * mat, mesh const * m)
 {
-  if(NULL == m) mat = mat + 1 - 1;
+  mat->n_rows = m->rank;
+  mat->n_cols = m->rank;
+
+  size_t n_nonzero = 0;
+  for(size_t row = 0; row < m->rank; ++row) {
+    size_t n_connections = list_length(m->v_neighbors[m->row2id[row]]);
+    n_nonzero += n_connections + 1;
+  }
+  mat->val    = safe_malloc(n_nonzero * sizeof(double));
+  mat->colInd = safe_malloc(n_nonzero * sizeof(size_t));
+  mat->rowPtr = safe_malloc(mat->n_rows * sizeof(size_t));
+
+  //size_t index = 0;
+  for(size_t row = 0; row < m->rank; ++row) {
+    size_t n_connections = list_length(m->v_neighbors[m->row2id[row]]);
+    for(size_t i = 0; i < n_connections; ++i) {
+      
+    }
+  }
 }
 
 void get_local_stiffness(double local_stiffness[3][3], mesh const * m,

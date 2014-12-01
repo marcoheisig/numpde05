@@ -34,13 +34,6 @@ void print_mesh(mesh const * m)
   printf("\n\n");
 }
 
-void free_list(vertex_list * l)
-{
-  if(NULL == l) return;
-  free_list(l->next);
-  free(l);
-}
-
 void free_mesh(mesh * m)
 {
   free(m->coords);
