@@ -167,9 +167,47 @@ void init_matrix(crs_matrix * mat, mesh const * m)
 void get_local_stiffness(double local_stiffness[3][3], mesh const * m,
                          size_t element_id)
 {
-  err_exit("Not yet implemented!");
-  /* Dummy operation to eliminate compiler errors */
-  local_stiffness[0][0] = element_id + m->coords[0];
+  double x1, x2, x3, y1, y2, y3;
+  size_t v_id1 = 3 * element_id + 0;
+  size_t v_id2 = 3 * element_id + 1;
+  size_t v_id3 = 3 * element_id + 2;
+  x1 = m->coords[v_id1 + 0];
+  y1 = m->coords[v_id1 + 1];
+  x2 = m->coords[v_id2 + 0];
+  y2 = m->coords[v_id2 + 1];
+  x3 = m->coords[v_id3 + 0];
+  y3 = m->coords[v_id3 + 1];
+
+  double B11 = x2 - x1;
+  double B12 = x3 - x1;
+  double B21 = y2 - y1;
+  double B22 = y3 - y1;
+  double detB = abs(B11 * B22 - B21 * B12);
+
+  double gamma1 = 1.0 / detB * ((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1));
+  double gamma2 = 1.0 / detB * ((x2-x1)*(x3-x1) + (y2-y1)*(y3-y1));
+  double gamma3 = 1.0 / detB * ((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+
+  // contribution from S1
+  local_stiffness[0][0] +=  0.5 * gamma1;
+  local_stiffness[0][1] += -0.5 * gamma1;
+  local_stiffness[1][0] += -0.5 * gamma1;
+  local_stiffness[1][1] +=  0.5 * gamma1;
+
+  // contribution from S2
+  local_stiffness[0][0] +=  1.0 * gamma2;
+  local_stiffness[0][1] += -0.5 * gamma2;
+  local_stiffness[0][2] += -0.5 * gamma2;
+  local_stiffness[1][0] += -0.5 * gamma2;
+  local_stiffness[1][0] += -0.5 * gamma2;
+  local_stiffness[2][1] +=  0.5 * gamma2;
+  local_stiffness[1][2] +=  0.5 * gamma2;
+
+  // contribution from S3
+  local_stiffness[0][0] +=  0.5 * gamma3;
+  local_stiffness[0][2] += -0.5 * gamma3;
+  local_stiffness[2][0] += -0.5 * gamma3;
+  local_stiffness[2][2] +=  0.5 * gamma3;
 }
 
 void get_local_load(double local_load[3], mesh const * m, size_t element_id,
