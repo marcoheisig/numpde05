@@ -57,6 +57,11 @@ void fem(size_t n, double errors[2], double (*fn_f)(double, double),
 #ifdef PRINT_DEBUG
   printf("Matrix after assembly:\n");
   print_matrix(&mat);
+  printf("rhs after assembly:\n");
+  for(size_t i = 0; i < m.n_vertices; ++i) {
+      printf("%5.2f\n", rhs[i]);
+  }
+  printf("\n");
 #endif
 
   /* 4. Apply boundary conditions */
@@ -65,6 +70,11 @@ void fem(size_t n, double errors[2], double (*fn_f)(double, double),
 #ifdef PRINT_DEBUG
   printf("Matrix after application of BCs:\n");
   print_matrix(&mat);
+  printf("rhs after application of BCs:\n");
+  for(size_t i = 0; i < m.n_vertices; ++i) {
+      printf("%5.2f\n", rhs[i]);
+  }
+  printf("\n");
 #endif
 
   /* 5. Solve the linear system */

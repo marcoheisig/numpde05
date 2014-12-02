@@ -32,9 +32,9 @@ void get_mesh(mesh * m, size_t n)
     for(size_t ix = 0; ix <= n; ++ix) {
       double x, y;
       if(ix % 2 == 0) x = (double)ix / (double)n;
-      else            x = (double)ix / (double)n + 1.0 / ((double)n * (double)n);
+      else            x = (double)ix / (double)n;// + 1.0 / ((double)n * (double)n);
       if(iy % 2 == 0) y = (double)iy / (double)n;
-      else            y = (double)iy / (double)n + 1.0 / ((double)n * (double)n);
+      else            y = (double)iy / (double)n;// + 1.0 / ((double)n * (double)n);
 
       size_t vertex_id = iy * (n + 1) + ix;
       m->coords[2 * vertex_id + 0] = x;
@@ -197,7 +197,7 @@ void get_local_stiffness(double local_stiffness[3][3], mesh const * m,
   local_stiffness[0][1] += -0.5 * gamma2;
   local_stiffness[0][2] += -0.5 * gamma2;
   local_stiffness[1][0] += -0.5 * gamma2;
-  local_stiffness[1][0] += -0.5 * gamma2;
+  local_stiffness[2][0] += -0.5 * gamma2;
   local_stiffness[2][1] +=  0.5 * gamma2;
   local_stiffness[1][2] +=  0.5 * gamma2;
 
@@ -272,22 +272,55 @@ void solve(crs_matrix const * mat, double * u, double const * rhs)
   size_t m = mat->n_rows;
   size_t n = mat->n_cols;
   double A[m][n+1];
+  //double *A = safe_malloc((n+1)*m * sizeof(double));
+  for(size_t i = 0; i < m; ++i) {
+    for(size_t j = 0; j < n; ++j) {
+      A[i][j] = 0.0;
+    }
+  }
   for(size_t i = 0; i < m; ++i) {
     for(size_t crsi = mat->rowPtr[i]; crsi < mat->rowPtr[i+1]; ++crsi) {
       size_t j = mat->colInd[crsi];
+      if(mat->val[crsi] >=  10e08 ||
+         mat->val[crsi] <= -10e08 ) {
+        printf("%zu %zu\n", i, j);
+      }
       A[i][j]  = mat->val[crsi];
     }
     A[i][n] = rhs[i];
   }
 
+#ifdef PRINT_DEBUG
+  printf("LSE:\n");
+  for(size_t i = 0; i < m; ++i) {
+    for(size_t j = 0; j < n+1; ++j) {
+      printf(" %5.2f", A[i][j]);
+    }
+    printf("\n");
+  }
+  printf("\n");
+#endif
+
   for(size_t j = 0; j < n; ++j) {
-    for(size_t i = j + 1; i < n; ++i) {
+    for(size_t i = j + 1; i < m; ++i) {
       double c = A[i][j] / A[j][j];
       for(size_t k = 0; k < n + 1; ++k) {
         A[i][k] = A[i][k] - c*A[j][k];
       }
     }
   }
+
+#ifdef PRINT_DEBUG
+  printf("triangular lse:\n");
+  for(size_t i = 0; i < m; ++i) {
+    for(size_t j = 0; j < n+1; ++j) {
+      printf(" %5.2f", A[i][j]);
+    }
+    printf("\n");
+  }
+  printf("\n");
+#endif
+
   u[n-1] = A[m-1][n] / A[m-1][n-1];
   for(int i = n - 1; i >= 0; --i) {
     double acc = 0.0;

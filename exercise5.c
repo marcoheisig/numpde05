@@ -8,7 +8,7 @@
  *  2: u = sin(pi*x)*sin(pi*y) (zero Dirichlet BC)
  *  3: u = cos(7*x)*cos(7*y) (non-zero DBC and RHS)
  */
-#define TESTCASE 2
+#define TESTCASE 1
 
 double u(double x, double y)
 {
@@ -51,7 +51,7 @@ double g(unsigned char i, double x, double y)
 
 int main()
 {
-    size_t n_avail[] = { 2, 3, 4, 10, 20 };
+    size_t n_avail[] = { 2, 4};
   size_t it;
   double errors[2];
 
