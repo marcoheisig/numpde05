@@ -172,15 +172,15 @@ void get_local_stiffness(double local_stiffness[3][3], mesh const * m,
   double B22 = y3 - y1;
   double detB = fabs(B11 * B22 - B21 * B12);
 
-#ifdef PRINT_DEBUG
-  printf("generating local stiffness matrix for triangle %zu\n", element_id);
-  printf("vertices: %zu %zu %zu\n", v_id1, v_id2, v_id3);
-  printf("B :=\n| %g-%g %g-%g |\n| %g-%g %g-%g |\n",
-         x2, x1, x3, x1, y2, y1, y3, y1);
-  printf("B :=\n| %g %g |\n| %g %g |\n",
-         B11, B12, B21, B22);
-  printf("detB: %g\n\n", detB);
-#endif
+  /* #ifdef PRINT_DEBUG */
+  /*   printf("generating local stiffness matrix for triangle %zu\n", element_id); */
+  /*   printf("vertices: %zu %zu %zu\n", v_id1, v_id2, v_id3); */
+  /*   printf("B :=\n| %g-%g %g-%g |\n| %g-%g %g-%g |\n", */
+  /*          x2, x1, x3, x1, y2, y1, y3, y1); */
+  /*   printf("B :=\n| %g %g |\n| %g %g |\n", */
+  /*          B11, B12, B21, B22); */
+  /*   printf("detB: %g\n\n", detB); */
+  /* #endif */
 
   double gamma1 = 1.0 / detB * ((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1));
   double gamma2 = 1.0 / detB * ((x2-x1)*(x3-x1) + (y2-y1)*(y3-y1));
@@ -268,7 +268,32 @@ void apply_dbc(crs_matrix * mat, double * rhs, mesh const * m,
 
 void solve(crs_matrix const * mat, double * u, double const * rhs)
 {
-  err_exit("Not yet implemented!");
-  /* Dummy operation to eliminate compiler errors */
-  u[0] = rhs[0] + mat->val[0];
+  /* ugly & slow 2:00 a.m. solver */
+  size_t m = mat->n_rows;
+  size_t n = mat->n_cols;
+  double A[m][n+1];
+  for(size_t i = 0; i < m; ++i) {
+    for(size_t crsi = mat->rowPtr[i]; crsi < mat->rowPtr[i+1]; ++crsi) {
+      size_t j = mat->colInd[crsi];
+      A[i][j]  = mat->val[crsi];
+    }
+    A[i][n] = rhs[i];
+  }
+
+  for(size_t j = 0; j < n; ++j) {
+    for(size_t i = j + 1; i < n; ++i) {
+      double c = A[i][j] / A[j][j];
+      for(size_t k = 0; k < n + 1; ++k) {
+        A[i][k] = A[i][k] - c*A[j][k];
+      }
+    }
+  }
+  u[n-1] = A[m-1][n] / A[m-1][n-1];
+  for(int i = n - 1; i >= 0; --i) {
+    double acc = 0.0;
+    for(size_t j = i + 1; j < n; ++j) {
+      acc=acc+A[i][j] * u[j];
+    }
+    u[i] = (A[i][n+1] - acc) / A[i][i];
+  }
 }

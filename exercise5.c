@@ -51,7 +51,7 @@ double g(unsigned char i, double x, double y)
 
 int main()
 {
-    size_t n_avail[] = { 2, 10, 20 , 40, 80 };
+    size_t n_avail[] = { 2, 3, 4, 10, 20 };
   size_t it;
   double errors[2];
 
