@@ -239,15 +239,31 @@ void assemble_local2global_stiffness(double local_stiffness[3][3],
 void assemble_local2global_load(double local_load[3], double * rhs,
                                 mesh const * m, size_t element_id)
 {
-  local_load[0] = rhs[0] + m->coords[0] + element_id;
+  for(size_t i = 0; i < 3; ++i) {
+    size_t row = m->t2v[3*element_id + i];
+    rhs[row] += local_load[i];
+  }
 }
 
 void apply_dbc(crs_matrix * mat, double * rhs, mesh const * m,
                double (fn_g)(unsigned char, double, double))
 {
-  err_exit("Not yet implemented!");
-  /* Dummy operation to eliminate compiler errors */
-  mat->val[0] = rhs[0] = fn_g(1, m->coords[0], m->coords[1]);
+  for(size_t i = 0; i < mat->n_rows; ++i) {
+    if(m->id_v[i] != INSIDE) {
+      double x = m->coords[i + 0];
+      double y = m->coords[i + 1];
+      for(size_t crsi = mat->rowPtr[i]; crsi < mat->rowPtr[i+1]; ++crsi) {
+        size_t j = mat->colInd[crsi];
+        if(i == j) {
+          mat->val[crsi] = 1.0;
+          rhs[i] = fn_g(m->id_v[i], x, y);
+        } else {
+          rhs[i] -= mat->val[crsi] * fn_g(m->id_v[i], x, y);
+          mat->val[crsi] = 0.0;
+        }
+      }
+    }
+  }
 }
 
 void solve(crs_matrix const * mat, double * u, double const * rhs)
